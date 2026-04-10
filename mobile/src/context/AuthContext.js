@@ -3,7 +3,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 
 // API base URL
-const API_BASE_URL = 'http://192.168.1.100:5000/api'; // Replace with your local IP
+const API_BASE_URL = process.env.NODE_ENV === 'development' 
+  ? 'http://localhost:5000/api' // Use localhost for development
+  : 'https://api.nyumba360.co.ke/api'; // Production URL
 
 // Create axios instance
 const api = axios.create({
@@ -126,6 +128,32 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Google Sign-In function
+  const googleSignIn = async (googleData) => {
+    dispatch({ type: 'LOGIN_START' });
+    
+    try {
+      const response = await api.post('/auth/google-signin', googleData);
+      const { user, token } = response.data;
+      
+      await AsyncStorage.setItem('token', token);
+      
+      dispatch({
+        type: 'LOGIN_SUCCESS',
+        payload: { user, token }
+      });
+      
+      return { success: true };
+    } catch (error) {
+      const errorMessage = error.response?.data?.error || 'Google sign in failed';
+      dispatch({
+        type: 'LOGIN_FAILURE',
+        payload: errorMessage
+      });
+      return { success: false, error: errorMessage };
+    }
+  };
+
   // Register function
   const register = async (userData) => {
     dispatch({ type: 'LOGIN_START' });
@@ -167,6 +195,7 @@ export const AuthProvider = ({ children }) => {
   const value = {
     ...state,
     login,
+    googleSignIn,
     register,
     logout,
     api
@@ -179,6 +208,9 @@ export const AuthProvider = ({ children }) => {
   );
 };
 
+// Export AuthContext for use in navigation
+export { AuthContext };
+
 // Hook to use auth context
 export const useAuth = () => {
   const context = useContext(AuthContext);
@@ -188,4 +220,4 @@ export const useAuth = () => {
   return context;
 };
 
-export default AuthContext;
+export default AuthProvider;

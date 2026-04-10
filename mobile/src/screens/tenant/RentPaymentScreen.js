@@ -7,7 +7,7 @@ import {
   Alert,
   ActivityIndicator,
 } from 'react-native';
-import { useAuth } from '../../context/AuthIcon';
+import { useAuth } from '../../context/AuthContext';
 
 const RentPaymentScreen = () => {
   const [loading, setLoading] = useState(false);

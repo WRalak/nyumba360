@@ -12,13 +12,14 @@ import {
   ScrollView
 } from 'react-native';
 import { useAuth } from '../../context/AuthContext';
+import GoogleSignInButton from '../../components/GoogleSignInButton';
 
 const LoginScreen = ({ navigation }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [errors, setErrors] = useState({});
   
-  const { login, loading } = useAuth();
+  const { login, googleSignIn, loading } = useAuth();
 
   const validateForm = () => {
     const newErrors = {};
@@ -46,6 +47,14 @@ const LoginScreen = ({ navigation }) => {
     
     if (!result.success) {
       Alert.alert('Login Failed', result.error);
+    }
+  };
+
+  const handleGoogleSignIn = async (googleData) => {
+    const result = await googleSignIn(googleData);
+    
+    if (!result.success) {
+      Alert.alert('Google Sign-In Failed', result.error);
     }
   };
 
@@ -99,11 +108,17 @@ const LoginScreen = ({ navigation }) => {
             )}
           </TouchableOpacity>
 
+          
+          <GoogleSignInButton 
+            onSignIn={handleGoogleSignIn}
+            loading={loading}
+          />
+
           <TouchableOpacity 
-            style={styles.forgotPassword}
-            onPress={() => navigation.navigate('ForgotPassword')}
+            style={styles.debugButton}
+            onPress={() => navigation.navigate('Debug')}
           >
-            <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+            <Text style={styles.debugButtonText}>Debug Panel</Text>
           </TouchableOpacity>
         </View>
 
@@ -200,6 +215,16 @@ const styles = StyleSheet.create({
   forgotPasswordText: {
     color: '#2563eb',
     fontSize: 14,
+    fontWeight: '500',
+  },
+  debugButton: {
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  debugButtonText: {
+    color: '#6b7280',
+    fontSize: 12,
+    fontWeight: '400',
   },
   footer: {
     flexDirection: 'row',

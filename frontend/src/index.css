@@ -1,27 +1,111 @@
+@import url('https://fonts.googleapis.com/css2?family=Satoshi:wght@300;400;500;700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   body {
-    font-family: 'Inter', sans-serif;
+    font-family: 'Satoshi', sans-serif;
+    color: theme('colors.airbnb-gray-dark');
+    background-color: theme('colors.airbnb-white');
   }
 }
 
 @layer components {
   .btn-primary {
-    @apply bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition-colors;
+    @apply bg-primary text-white px-4 py-2 rounded-lg hover:bg-primary-dark transition-colors font-medium;
   }
   
   .btn-secondary {
-    @apply bg-gray-200 text-gray-800 px-4 py-2 rounded-lg hover:bg-gray-300 transition-colors;
+    @apply bg-airbnb-gray text-airbnb-white px-4 py-2 rounded-lg hover:bg-airbnb-gray-dark transition-colors font-medium;
+  }
+  
+  .btn-outline {
+    @apply border border-airbnb-pink text-airbnb-pink px-4 py-2 rounded-lg hover:bg-airbnb-pink-light transition-colors font-medium;
+  }
+  
+  .btn-danger {
+    @apply bg-airbnb-red text-airbnb-white px-4 py-2 rounded-lg hover:bg-airbnb-red-dark transition-colors font-medium;
+  }
+  
+  .btn-success {
+    @apply bg-airbnb-green text-airbnb-white px-4 py-2 rounded-lg hover:bg-airbnb-teal transition-colors font-medium;
   }
   
   .card {
-    @apply bg-white rounded-lg shadow-md p-6;
+    @apply bg-airbnb-white rounded-xl shadow-sm border border-airbnb-gray-light p-6;
+  }
+  
+  .card-hover {
+    @apply hover:shadow-lg hover:border-airbnb-pink transition-all duration-200;
   }
   
   .input-field {
-    @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500;
+    @apply w-full px-4 py-3 border border-airbnb-gray-light rounded-lg focus:outline-none focus:ring-2 focus:ring-airbnb-pink focus:border-transparent;
+  }
+  
+  .navbar {
+    @apply bg-airbnb-white border-b border-airbnb-gray-light;
+  }
+  
+  .sidebar {
+    @apply bg-airbnb-white border-r border-airbnb-gray-light;
+  }
+  
+  .stat-card {
+    @apply bg-airbnb-white rounded-xl shadow-sm border border-airbnb-gray-light p-6;
+  }
+  
+  .badge-primary {
+    @apply bg-airbnb-pink text-airbnb-white px-3 py-1 rounded-full text-sm font-medium;
+  }
+  
+  .badge-success {
+    @apply bg-airbnb-green text-airbnb-white px-3 py-1 rounded-full text-sm font-medium;
+  }
+  
+  .badge-warning {
+    @apply bg-airbnb-yellow text-airbnb-white px-3 py-1 rounded-full text-sm font-medium;
+  }
+  
+  .badge-danger {
+    @apply bg-airbnb-red text-airbnb-white px-3 py-1 rounded-full text-sm font-medium;
+  }
+  
+  .text-primary {
+    @apply text-airbnb-pink;
+  }
+  
+  .text-secondary {
+    @apply text-airbnb-gray;
+  }
+  
+  .text-muted {
+    @apply text-airbnb-gray-light;
+  }
+  
+  .bg-primary {
+    @apply bg-airbnb-pink;
+  }
+  
+  .bg-secondary {
+    @apply bg-airbnb-gray;
+  }
+  
+  .bg-success {
+    @apply bg-airbnb-green;
+  }
+  
+  .bg-warning {
+    @apply bg-airbnb-yellow;
+  }
+  
+  .bg-danger {
+    @apply bg-airbnb-red;
+  }
+  
+  .bg-info {
+    @apply bg-airbnb-blue;
   }
 }

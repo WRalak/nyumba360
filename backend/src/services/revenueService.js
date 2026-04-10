@@ -28,9 +28,9 @@ class RevenueService {
         .join('rental_units', 'lease_agreements.unit_id', 'rental_units.id')
         .where({
           'rental_units.property_id': propertyId,
-          'rent_payments.payment_status': 'completed',
-          'rent_payments.payment_date': '>=', moment().subtract(days, 'days').format('YYYY-MM-DD')
+          'rent_payments.payment_status': 'completed'
         })
+        .where('rent_payments.payment_date', '>=', moment().subtract(days, 'days').format('YYYY-MM-DD'))
         .select(
           db.raw('DATE(payment_date) as date'),
           db.raw('SUM(amount) as daily_revenue')

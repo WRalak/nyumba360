@@ -23,6 +23,9 @@ import RentPaymentScreen from '../screens/tenant/RentPaymentScreen';
 import MaintenanceRequestScreen from '../screens/tenant/MaintenanceRequestScreen';
 import TenantProfileScreen from '../screens/tenant/TenantProfileScreen';
 
+// Debug Screen
+import DebugScreen from '../screens/DebugScreen';
+
 const Stack = createStackNavigator();
 const Tab = createBottomTabNavigator();
 
@@ -117,6 +120,7 @@ const AuthNavigator = () => {
     <Stack.Navigator screenOptions={{ headerShown: false }}>
       <Stack.Screen name="Login" component={LoginScreen} />
       <Stack.Screen name="Register" component={RegisterScreen} />
+      <Stack.Screen name="Debug" component={DebugScreen} />
     </Stack.Navigator>
   );
 };

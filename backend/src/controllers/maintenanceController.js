@@ -1,7 +1,8 @@
 const { validationResult } = require('express-validator');
-const db = require('../config/database');
+const MaintenanceTicket = require('../models/Maintenance');
 const Property = require('../models/Property');
 const Tenant = require('../models/Tenant');
+const Unit = require('../models/Unit');
 
 class MaintenanceController {
   static async createTicket(req, res) {
@@ -14,7 +15,20 @@ class MaintenanceController {
         });
       }
 
-      const { property_id, unit_id, tenant_id, title, description, priority = 'medium', images } = req.body;
+      const { 
+        property_id, 
+        unit_id, 
+        tenant_id, 
+        title, 
+        description, 
+        category, 
+        priority = 'medium', 
+        images,
+        access_instructions,
+        permission_to_enter,
+        preferred_time,
+        emergency_contact
+      } = req.body;
 
       // Verify property ownership
       const property = await Property.findById(property_id);
@@ -24,12 +38,20 @@ class MaintenanceController {
         });
       }
 
+      // Verify unit
+      const unit = await Unit.findById(unit_id);
+      if (!unit || unit.property_id.toString() !== property_id) {
+        return res.status(400).json({
+          error: 'Unit not found or does not belong to this property'
+        });
+      }
+
       // Verify tenant if provided
       if (tenant_id) {
         const tenant = await Tenant.findById(tenant_id);
-        if (!tenant || !tenant.current_lease || tenant.current_lease.property_id !== property_id) {
+        if (!tenant) {
           return res.status(400).json({
-            error: 'Invalid tenant for this property'
+            error: 'Tenant not found'
           });
         }
       }
@@ -38,16 +60,28 @@ class MaintenanceController {
         property_id,
         unit_id,
         tenant_id,
+        landlord_id: req.user.userId,
         title,
         description,
+        category,
         priority,
         images: images || [],
+        access_instructions,
+        permission_to_enter: permission_to_enter || false,
+        preferred_time,
+        emergency_contact,
         status: 'open'
       };
 
-      const [ticket] = await db('maintenance_tickets')
-        .insert(ticketData)
-        .returning('*');
+      const ticket = new MaintenanceTicket(ticketData);
+      await ticket.save();
+
+      // Populate related data for response
+      await ticket.populate([
+        { path: 'property_id', select: 'property_name address' },
+        { path: 'unit_id', select: 'unit_number unit_type' },
+        { path: 'tenant_id', select: 'first_name last_name phone' }
+      ]);
 
       res.status(201).json({
         message: 'Maintenance ticket created successfully',
@@ -57,57 +91,66 @@ class MaintenanceController {
       console.error('Create maintenance ticket error:', error);
       res.status(500).json({
         error: 'Failed to create maintenance ticket',
-        message: error.message
+        details: error.message
       });
     }
   }
 
   static async getTickets(req, res) {
     try {
-      const { property_id, status, priority, tenant_id, limit = 50 } = req.query;
-      let query = db('maintenance_tickets')
-        .join('properties', 'maintenance_tickets.property_id', 'properties.id')
-        .join('rental_units', 'maintenance_tickets.unit_id', 'rental_units.id')
-        .leftJoin('tenants', 'maintenance_tickets.tenant_id', 'tenants.id')
-        .select(
-          'maintenance_tickets.*',
-          'properties.name as property_name',
-          'properties.address as property_address',
-          'rental_units.unit_number',
-          'rental_units.unit_type',
-          'tenants.first_name',
-          'tenants.last_name',
-          'tenants.phone'
-        )
-        .where('properties.owner_id', req.user.userId)
-        .orderBy('maintenance_tickets.created_at', 'desc')
-        .limit(parseInt(limit));
+      const {
+        property_id,
+        status,
+        priority,
+        tenant_id,
+        category,
+        page = 1,
+        limit = 20,
+        sort_by = 'requested_date',
+        sort_order = 'desc'
+      } = req.query;
 
-      // Apply filters
-      if (property_id) {
-        query = query.where('maintenance_tickets.property_id', property_id);
-      }
-      if (status) {
-        query = query.where('maintenance_tickets.status', status);
-      }
-      if (priority) {
-        query = query.where('maintenance_tickets.priority', priority);
-      }
-      if (tenant_id) {
-        query = query.where('maintenance_tickets.tenant_id', tenant_id);
-      }
+      // Build query
+      const query = { landlord_id: req.user.userId };
 
-      const tickets = await query;
+      if (property_id) query.property_id = property_id;
+      if (status) query.status = status;
+      if (priority) query.priority = priority;
+      if (tenant_id) query.tenant_id = tenant_id;
+      if (category) query.category = category;
+
+      // Sort options
+      const sortOptions = {};
+      sortOptions[sort_by] = sort_order === 'desc' ? -1 : 1;
+
+      // Pagination
+      const skip = (parseInt(page) - 1) * parseInt(limit);
+
+      const [tickets, total] = await Promise.all([
+        MaintenanceTicket.find(query)
+          .populate('property_id', 'property_name address')
+          .populate('unit_id', 'unit_number unit_type')
+          .populate('tenant_id', 'first_name last_name phone')
+          .sort(sortOptions)
+          .skip(skip)
+          .limit(parseInt(limit)),
+        MaintenanceTicket.countDocuments(query)
+      ]);
 
       res.json({
-        message: 'Maintenance tickets retrieved successfully',
-        tickets
+        tickets,
+        pagination: {
+          current_page: parseInt(page),
+          total_pages: Math.ceil(total / parseInt(limit)),
+          total_records: total,
+          records_per_page: parseInt(limit)
+        }
       });
     } catch (error) {
       console.error('Get maintenance tickets error:', error);
       res.status(500).json({
         error: 'Failed to retrieve maintenance tickets',
-        message: error.message
+        details: error.message
       });
     }
   }
@@ -115,26 +158,15 @@ class MaintenanceController {
   static async getTicket(req, res) {
     try {
       const { id } = req.params;
-      
-      const ticket = await db('maintenance_tickets')
-        .join('properties', 'maintenance_tickets.property_id', 'properties.id')
-        .join('rental_units', 'maintenance_tickets.unit_id', 'rental_units.id')
-        .leftJoin('tenants', 'maintenance_tickets.tenant_id', 'tenants.id')
-        .select(
-          'maintenance_tickets.*',
-          'properties.name as property_name',
-          'properties.address as property_address',
-          'rental_units.unit_number',
-          'rental_units.unit_type',
-          'tenants.first_name',
-          'tenants.last_name',
-          'tenants.phone'
-        )
-        .where({
-          'maintenance_tickets.id': id,
-          'properties.owner_id': req.user.userId
-        })
-        .first();
+
+      const ticket = await MaintenanceTicket.findOne({
+        _id: id,
+        landlord_id: req.user.userId
+      })
+        .populate('property_id', 'property_name address')
+        .populate('unit_id', 'unit_number unit_type')
+        .populate('tenant_id', 'first_name last_name phone')
+        .populate('assigned_to.name', 'first_name last_name');
 
       if (!ticket) {
         return res.status(404).json({
@@ -142,15 +174,12 @@ class MaintenanceController {
         });
       }
 
-      res.json({
-        message: 'Maintenance ticket retrieved successfully',
-        ticket
-      });
+      res.json({ ticket });
     } catch (error) {
       console.error('Get maintenance ticket error:', error);
       res.status(500).json({
         error: 'Failed to retrieve maintenance ticket',
-        message: error.message
+        details: error.message
       });
     }
   }
@@ -166,45 +195,56 @@ class MaintenanceController {
       }
 
       const { id } = req.params;
-      const updates = req.body;
+      const updateData = req.body;
 
-      // Verify ticket exists and belongs to landlord
-      const existingTicket = await db('maintenance_tickets')
-        .join('properties', 'maintenance_tickets.property_id', 'properties.id')
-        .where({
-          'maintenance_tickets.id': id,
-          'properties.owner_id': req.user.userId
-        })
-        .first();
+      // Find ticket and verify ownership
+      const ticket = await MaintenanceTicket.findOne({
+        _id: id,
+        landlord_id: req.user.userId
+      });
 
-      if (!existingTicket) {
+      if (!ticket) {
         return res.status(404).json({
           error: 'Maintenance ticket not found'
         });
       }
 
-      // Add updated_at timestamp
-      updates.updated_at = new Date();
-
-      // If status is being changed to resolved, add resolved_at timestamp
-      if (updates.status === 'resolved' && existingTicket.status !== 'resolved') {
-        updates.resolved_at = new Date();
+      // Update completion date if status changes to completed
+      if (updateData.status === 'completed' && ticket.status !== 'completed') {
+        updateData.completion_date = new Date();
       }
 
-      const [ticket] = await db('maintenance_tickets')
-        .where({ id })
-        .update(updates)
-        .returning('*');
+      // Update assigned date if being assigned
+      if (updateData.assigned_to && !ticket.assigned_date) {
+        updateData.assigned_date = new Date();
+      }
+
+      // Update numeric fields
+      if (updateData.estimated_cost) {
+        updateData.estimated_cost = parseFloat(updateData.estimated_cost);
+      }
+      if (updateData.actual_cost) {
+        updateData.actual_cost = parseFloat(updateData.actual_cost);
+      }
+
+      const updatedTicket = await MaintenanceTicket.findByIdAndUpdate(
+        id,
+        { $set: updateData },
+        { new: true, runValidators: true }
+      )
+        .populate('property_id', 'property_name address')
+        .populate('unit_id', 'unit_number unit_type')
+        .populate('tenant_id', 'first_name last_name phone');
 
       res.json({
         message: 'Maintenance ticket updated successfully',
-        ticket
+        ticket: updatedTicket
       });
     } catch (error) {
       console.error('Update maintenance ticket error:', error);
       res.status(500).json({
         error: 'Failed to update maintenance ticket',
-        message: error.message
+        details: error.message
       });
     }
   }
@@ -213,24 +253,18 @@ class MaintenanceController {
     try {
       const { id } = req.params;
 
-      // Verify ticket exists and belongs to landlord
-      const existingTicket = await db('maintenance_tickets')
-        .join('properties', 'maintenance_tickets.property_id', 'properties.id')
-        .where({
-          'maintenance_tickets.id': id,
-          'properties.owner_id': req.user.userId
-        })
-        .first();
+      const ticket = await MaintenanceTicket.findOne({
+        _id: id,
+        landlord_id: req.user.userId
+      });
 
-      if (!existingTicket) {
+      if (!ticket) {
         return res.status(404).json({
           error: 'Maintenance ticket not found'
         });
       }
 
-      await db('maintenance_tickets')
-        .where({ id })
-        .del();
+      await MaintenanceTicket.findByIdAndDelete(id);
 
       res.json({
         message: 'Maintenance ticket deleted successfully'
@@ -239,58 +273,186 @@ class MaintenanceController {
       console.error('Delete maintenance ticket error:', error);
       res.status(500).json({
         error: 'Failed to delete maintenance ticket',
-        message: error.message
+        details: error.message
       });
     }
   }
 
   static async getMaintenanceStats(req, res) {
     try {
-      const { property_id } = req.query;
-      let whereClause = { 'properties.owner_id': req.user.userId };
+      const { property_id, start_date, end_date } = req.query;
 
+      // Verify property ownership if property_id is provided
       if (property_id) {
-        whereClause['maintenance_tickets.property_id'] = property_id;
+        const property = await Property.findById(property_id);
+        if (!property || property.owner_id !== req.user.userId) {
+          return res.status(403).json({
+            error: 'Access denied or property not found'
+          });
+        }
       }
 
-      const stats = await db('maintenance_tickets')
-        .join('properties', 'maintenance_tickets.property_id', 'properties.id')
-        .where(whereClause)
-        .select(
-          db.raw('COUNT(*) as total_tickets'),
-          db.raw('COUNT(CASE WHEN status = \'open\' THEN 1 END) as open_tickets'),
-          db.raw('COUNT(CASE WHEN status = \'in_progress\' THEN 1 END) as in_progress_tickets'),
-          db.raw('COUNT(CASE WHEN status = \'resolved\' THEN 1 END) as resolved_tickets'),
-          db.raw('COUNT(CASE WHEN priority = \'urgent\' THEN 1 END) as urgent_tickets'),
-          db.raw('COUNT(CASE WHEN priority = \'high\' THEN 1 END) as high_tickets')
-        )
-        .first();
+      const startDate = start_date ? new Date(start_date) : new Date(new Date().setMonth(new Date().getMonth() - 12));
+      const endDate = end_date ? new Date(end_date) : new Date();
 
-      // Calculate average resolution time
-      const avgResolutionTime = await db('maintenance_tickets')
-        .join('properties', 'maintenance_tickets.property_id', 'properties.id')
-        .where({
-          ...whereClause,
-          'maintenance_tickets.status': 'resolved'
-        })
-        .whereNotNull('resolved_at')
-        .select(
-          db.raw('AVG(EXTRACT(EPOCH FROM (resolved_at - created_at))/86400) as avg_days')
-        )
-        .first();
+      const stats = await MaintenanceTicket.getMaintenanceStats(
+        property_id,
+        startDate,
+        endDate
+      );
 
       res.json({
-        message: 'Maintenance stats retrieved successfully',
-        stats: {
-          ...stats,
-          avgResolutionDays: Math.round(avgResolutionTime?.avg_days || 0)
+        maintenance_stats: stats,
+        period: {
+          start_date: startDate,
+          end_date: endDate
         }
       });
     } catch (error) {
       console.error('Get maintenance stats error:', error);
       res.status(500).json({
         error: 'Failed to retrieve maintenance stats',
-        message: error.message
+        details: error.message
+      });
+    }
+  }
+
+  static async getMaintenanceTrends(req, res) {
+    try {
+      const { property_id, months = 12 } = req.query;
+
+      // Verify property ownership if property_id is provided
+      if (property_id) {
+        const property = await Property.findById(property_id);
+        if (!property || property.owner_id !== req.user.userId) {
+          return res.status(403).json({
+            error: 'Access denied or property not found'
+          });
+        }
+      }
+
+      const trends = await MaintenanceTicket.getMaintenanceTrends(
+        property_id,
+        parseInt(months)
+      );
+
+      res.json({
+        trends,
+        months_analyzed: parseInt(months)
+      });
+    } catch (error) {
+      console.error('Get maintenance trends error:', error);
+      res.status(500).json({
+        error: 'Failed to fetch maintenance trends',
+        details: error.message
+      });
+    }
+  }
+
+  static async getCategoryBreakdown(req, res) {
+    try {
+      const { property_id, start_date, end_date } = req.query;
+
+      // Verify property ownership if property_id is provided
+      if (property_id) {
+        const property = await Property.findById(property_id);
+        if (!property || property.owner_id !== req.user.userId) {
+          return res.status(403).json({
+            error: 'Access denied or property not found'
+          });
+        }
+      }
+
+      const startDate = start_date ? new Date(start_date) : new Date(new Date().setMonth(new Date().getMonth() - 12));
+      const endDate = end_date ? new Date(end_date) : new Date();
+
+      const breakdown = await MaintenanceTicket.getCategoryBreakdown(
+        property_id,
+        startDate,
+        endDate
+      );
+
+      res.json({
+        category_breakdown: breakdown,
+        period: {
+          start_date: startDate,
+          end_date: endDate
+        }
+      });
+    } catch (error) {
+      console.error('Get category breakdown error:', error);
+      res.status(500).json({
+        error: 'Failed to fetch category breakdown',
+        details: error.message
+      });
+    }
+  }
+
+  static async getVendorPerformance(req, res) {
+    try {
+      const { property_id } = req.query;
+
+      // Verify property ownership if property_id is provided
+      if (property_id) {
+        const property = await Property.findById(property_id);
+        if (!property || property.owner_id !== req.user.userId) {
+          return res.status(403).json({
+            error: 'Access denied or property not found'
+          });
+        }
+      }
+
+      const performance = await MaintenanceTicket.getVendorPerformance(property_id);
+
+      res.json({
+        vendor_performance: performance
+      });
+    } catch (error) {
+      console.error('Get vendor performance error:', error);
+      res.status(500).json({
+        error: 'Failed to fetch vendor performance',
+        details: error.message
+      });
+    }
+  }
+
+  static async addNote(req, res) {
+    try {
+      const { id } = req.params;
+      const { content, is_internal = false } = req.body;
+
+      const ticket = await MaintenanceTicket.findOne({
+        _id: id,
+        landlord_id: req.user.userId
+      });
+
+      if (!ticket) {
+        return res.status(404).json({
+          error: 'Maintenance ticket not found'
+        });
+      }
+
+      const note = {
+        content,
+        added_by: req.user.userId,
+        is_internal
+      };
+
+      const updatedTicket = await MaintenanceTicket.findByIdAndUpdate(
+        id,
+        { $push: { notes: note } },
+        { new: true }
+      ).populate('notes.added_by', 'first_name last_name');
+
+      res.json({
+        message: 'Note added successfully',
+        note: updatedTicket.notes[updatedTicket.notes.length - 1]
+      });
+    } catch (error) {
+      console.error('Add note error:', error);
+      res.status(500).json({
+        error: 'Failed to add note',
+        details: error.message
       });
     }
   }

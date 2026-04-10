@@ -31,7 +31,7 @@ class AuthController {
       }
 
       // Create new user
-      const user = await User.create({
+      const user = new User({
         email,
         phone,
         password,
@@ -40,9 +40,11 @@ class AuthController {
         user_type
       });
 
+      await user.save();
+
       // Generate JWT token
       const token = jwt.sign(
-        { userId: user.id, userType: user.user_type },
+        { userId: user._id, userType: user.user_type },
         process.env.JWT_SECRET,
         { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
       );
@@ -75,6 +77,7 @@ class AuthController {
 
       // Find user by email
       const user = await User.findByEmail(email);
+      console.log('Login attempt - User found:', !!user);
       if (!user) {
         return res.status(401).json({
           error: 'Invalid credentials'
@@ -82,7 +85,8 @@ class AuthController {
       }
 
       // Verify password
-      const isValidPassword = await User.verifyPassword(password, user.password_hash);
+      const isValidPassword = await user.verifyPassword(password);
+      console.log('Login attempt - Password valid:', isValidPassword);
       if (!isValidPassword) {
         return res.status(401).json({
           error: 'Invalid credentials'
@@ -91,13 +95,12 @@ class AuthController {
 
       // Generate JWT token
       const token = jwt.sign(
-        { userId: user.id, userType: user.user_type },
+        { userId: user._id, userType: user.user_type },
         process.env.JWT_SECRET,
         { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
       );
 
-      // Remove password hash from response
-      delete user.password_hash;
+      // Password is automatically removed by toJSON method
 
       res.json({
         message: 'Login successful',
@@ -159,7 +162,7 @@ class AuthController {
       // Check if email is being changed and if it's already taken
       if (email) {
         const existingUser = await User.findByEmail(email);
-        if (existingUser && existingUser.id !== userId) {
+        if (existingUser && existingUser._id.toString() !== userId) {
           return res.status(409).json({
             error: 'Email is already taken'
           });
@@ -169,19 +172,18 @@ class AuthController {
       // Check if phone is being changed and if it's already taken
       if (phone) {
         const existingPhone = await User.findByPhone(phone);
-        if (existingPhone && existingPhone.id !== userId) {
+        if (existingPhone && existingPhone._id.toString() !== userId) {
           return res.status(409).json({
             error: 'Phone number is already taken'
           });
         }
       }
 
-      const user = await User.updateProfile(userId, {
-        first_name,
-        last_name,
-        email,
-        phone
-      });
+      const user = await User.findByIdAndUpdate(
+        userId,
+        { first_name, last_name, email, phone },
+        { new: true, runValidators: true }
+      );
 
       if (!user) {
         return res.status(404).json({
