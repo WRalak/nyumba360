@@ -10,7 +10,7 @@ jobs:
   test:
     runs-on: ubuntu-latest
     
-    services:
+    steps:
       - uses: actions/checkout@v3
       - uses: actions/setup-node@v3
         with:
@@ -21,10 +21,11 @@ jobs:
           npm ci
           cd ../frontend
           npm ci
-      - name: Run tests
+      - name: Run backend tests
         run: |
           cd backend
           npm test
+      - name: Run frontend tests
         run: |
           cd ../frontend
           npm test -- --coverage --watchAll=false
@@ -32,21 +33,29 @@ jobs:
       - name: Upload coverage reports
         uses: codecov/codecov-action@v3
         with:
-          file: ./backend/coverage/lcov.info
-          file: ./frontend/coverage/lcov.info
-          files: ./coverage/lcov.info
+          files: ./backend/coverage/lcov.info,./frontend/coverage/lcov.info
 
   build-and-deploy:
     needs: test
     runs-on: ubuntu-latest
     
-    services:
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+      
+      - name: Login to Docker Hub
+        uses: docker/login-action@v2
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      
       - name: Build and Push Docker Image
-        uses: docker/build-push-action@v3
+        uses: docker/build-push-action@v5
         with:
           context: .
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/nyumba360:${{ github.sha }}
+      
       - name: Deploy to Production
         uses: appleboy/ssh-action@v0.1.5
         with:
@@ -61,18 +70,20 @@ jobs:
             docker-compose restart
 
   health-check:
+    needs: build-and-deploy
     runs-on: ubuntu-latest
     
-    services:
+    steps:
       - name: Health Check
         run: |
           curl -f https://api.nyumba360.co.ke/health || exit 1
           curl -f https://nyumba360.co.ke/health || exit 1
 
   backup:
+    needs: build-and-deploy
     runs-on: ubuntu-latest
     
-    services:
+    steps:
       - name: Generate Database Backup
         uses: appleboy/ssh-action@v0.1.5
         with:
@@ -94,45 +105,52 @@ jobs:
             docker-compose exec -T backend npm run cleanup-backups
 
   security-scan:
+    needs: build-and-deploy
     runs-on: ubuntu-latest
     
-    services:
+    steps:
       - name: Run Security Scan
         run: |
-          curl -f https://api.nyumba360.co/health || exit 1
-          curl -f https://nyumba360.co/health || exit 1
+          curl -f https://api.nyumba360.co.ke/health || exit 1
+          curl -f https://nyumba360.co.ke/health || exit 1
 
   performance-test:
+    needs: build-and-deploy
     runs-on: ubuntu-latest
     
-    services:
+    steps:
       - name: Load Testing
         run: |
-          curl -f https://api.nyumba360.co/health || exit 1
-          curl -f https://nyumba360.co/health || exit 1
+          curl -f https://api.nyumba360.co.ke/health || exit 1
+          curl -f https://nyumba360.co.ke/health || exit 1
 
   notify:
+    needs: [build-and-deploy, health-check]
     runs-on: ubuntu-latest
+    if: always()
     
-    services:
+    steps:
       - name: Send Deployment Notification
         uses: 8398a7/action-slack@v3
         with:
           webhook_url: ${{ secrets.SLACK_WEBHOOK }}
-        if: success()
-        with:
           text: "Nyumba360 deployed successfully! \ud83c\udf7c2\ud80d\udc2f\ud83d\udc3d\udc2f\ud83d\udc3d"
           color: good
-        else:
-          with:
-            text: "Deployment failed! \ud83d\udf7c2\ud80d\udc2f\ud83d\udc3d\ud83d\udc3d"
-            color: danger
+        if: success()
+      - name: Send Failure Notification
+        uses: 8398a7/action-slack@v3
+        with:
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+          text: "Deployment failed! \ud83d\udf7c2\ud80d\udc2f\ud83d\udc3d\ud83d\udc3d"
+          color: danger
+        if: failure()
 
   rollback:
+    needs: [build-and-deploy, health-check]
     runs-on: ubuntu-latest
     if: failure()
     
-    services:
+    steps:
       - name: Rollback Deployment
         uses: appleboy/ssh-action@v0.1.5
         with:
@@ -148,9 +166,10 @@ jobs:
             docker-compose restart
 
   cleanup:
+    needs: [build-and-deploy, notify]
     runs-on: ubuntu-latest
     
-    services:
+    steps:
       - name: Cleanup Docker Images
         run: |
           docker image prune -f
