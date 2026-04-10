@@ -1,0 +1,157 @@
+name: Deploy Nyumba360
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    services:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+      - name: Install dependencies
+        run: |
+          cd backend
+          npm ci
+          cd ../frontend
+          npm ci
+      - name: Run tests
+        run: |
+          cd backend
+          npm test
+        run: |
+          cd ../frontend
+          npm test -- --coverage --watchAll=false
+      
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v3
+        with:
+          file: ./backend/coverage/lcov.info
+          file: ./frontend/coverage/lcov.info
+          files: ./coverage/lcov.info
+
+  build-and-deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    
+    services:
+      - name: Build and Push Docker Image
+        uses: docker/build-push-action@v3
+        with:
+          context: .
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/nyumba360:${{ github.sha }}
+      - name: Deploy to Production
+        uses: appleboy/ssh-action@v0.1.5
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            cd /var/www/nyumba360
+            docker-compose pull
+            docker-compose up -d --no-deps
+            docker-compose exec -T backend npm run migrate
+            docker-compose restart
+
+  health-check:
+    runs-on: ubuntu-latest
+    
+    services:
+      - name: Health Check
+        run: |
+          curl -f https://api.nyumba360.co.ke/health || exit 1
+          curl -f https://nyumba360.co.ke/health || exit 1
+
+  backup:
+    runs-on: ubuntu-latest
+    
+    services:
+      - name: Generate Database Backup
+        uses: appleboy/ssh-action@v0.1.5
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            cd /var/www/nyumba360
+            docker-compose exec -T backend npm run backup
+            
+      - name: Cleanup Old Backups
+        uses: appleboy/ssh-action@v0.1.5
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            cd /var/www/nyumba360
+            docker-compose exec -T backend npm run cleanup-backups
+
+  security-scan:
+    runs-on: ubuntu-latest
+    
+    services:
+      - name: Run Security Scan
+        run: |
+          curl -f https://api.nyumba360.co/health || exit 1
+          curl -f https://nyumba360.co/health || exit 1
+
+  performance-test:
+    runs-on: ubuntu-latest
+    
+    services:
+      - name: Load Testing
+        run: |
+          curl -f https://api.nyumba360.co/health || exit 1
+          curl -f https://nyumba360.co/health || exit 1
+
+  notify:
+    runs-on: ubuntu-latest
+    
+    services:
+      - name: Send Deployment Notification
+        uses: 8398a7/action-slack@v3
+        with:
+          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
+        if: success()
+        with:
+          text: "Nyumba360 deployed successfully! \ud83c\udf7c2\ud80d\udc2f\ud83d\udc3d\udc2f\ud83d\udc3d"
+          color: good
+        else:
+          with:
+            text: "Deployment failed! \ud83d\udf7c2\ud80d\udc2f\ud83d\udc3d\ud83d\udc3d"
+            color: danger
+
+  rollback:
+    runs-on: ubuntu-latest
+    if: failure()
+    
+    services:
+      - name: Rollback Deployment
+        uses: appleboy/ssh-action@v0.1.5
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          script: |
+            cd /var/www/nyumba360
+            docker-compose pull
+            docker-compose down
+            docker-compose up -d --no-deps
+            docker-compose exec -T backend npm run migrate
+            docker-compose restart
+
+  cleanup:
+    runs-on: ubuntu-latest
+    
+    services:
+      - name: Cleanup Docker Images
+        run: |
+          docker image prune -f
+          docker volume prune -f
