@@ -1,7 +1,26 @@
 const fs = require('fs').promises;
 const path = require('path');
 const crypto = require('crypto');
-const db = require('../config/database');
+const { Pool } = require('pg');
+require('dotenv').config();
+
+// Database configuration
+const usePostgreSQL = process.env.POSTGRES_URI;
+const useMongoDB = process.env.MONGODB_URI;
+
+let pool;
+
+if (usePostgreSQL) {
+  pool = new Pool({
+    connectionString: process.env.POSTGRES_URI,
+    ssl: process.env.POSTGRES_URI.includes('aws.neon.tech') ? { rejectUnauthorized: false } : false,
+    max: parseInt(process.env.DB_MAX_CONNECTIONS) || 10,
+    connectionTimeoutMillis: parseInt(process.env.DB_CONNECTION_TIMEOUT) || 10000,
+  });
+} else if (useMongoDB) {
+  const mongoose = require('mongoose');
+  // MongoDB fallback if needed
+}
 
 class MediaService {
   static async uploadPropertyImage(propertyId, file, description = '') {
@@ -23,9 +42,36 @@ class MediaService {
       await fs.writeFile(filePath, file.buffer);
 
       // Save to database
-      const [mediaRecord] = await db('property_media')
-        .insert({
-          property_id,
+      let mediaRecord;
+      
+      if (usePostgreSQL) {
+        // PostgreSQL implementation
+        const insertQuery = `
+          INSERT INTO property_media (property_id, media_type, file_name, file_path, file_size, description, created_at)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+          RETURNING *
+        `;
+        
+        const result = await pool.query(insertQuery, [
+          propertyId, 'image', file.name, uniqueFilename, file.size, description
+        ]);
+        
+        mediaRecord = result.rows[0];
+      } else {
+        // MongoDB fallback
+        const mongoose = require('mongoose');
+        const MediaModel = mongoose.model('Media', new mongoose.Schema({
+          property_id: { type: mongoose.Schema.Types.ObjectId, ref: 'Property', required: true },
+          media_type: { type: String, required: true },
+          file_name: { type: String, required: true },
+          file_path: { type: String, required: true },
+          file_size: { type: Number, required: true },
+          description: { type: String },
+          created_at: { type: Date, default: Date.now }
+        }));
+        
+        mediaRecord = await MediaModel.create({
+          property_id: propertyId,
           media_type: 'image',
           file_name: file.name,
           file_path: `/uploads/properties/${uniqueFilename}`,
@@ -34,8 +80,26 @@ class MediaService {
           description,
           is_primary: false,
           created_at: new Date()
-        })
-        .returning('*');
+        });
+      }
+
+      return {
+        success: true,
+        message: 'Property image uploaded successfully',
+        data: {
+          media_id: mediaRecord._id || mediaRecord.id,
+          file_name: file.name,
+          file_path: `/uploads/properties/${uniqueFilename}`,
+          file_size: file.size,
+          mime_type: file.mimetype,
+          description
+        }
+      };
+    } catch (error) {
+      console.error('Upload property image error:', error);
+      throw error;
+    }
+  }
 
       return {
         success: true,
