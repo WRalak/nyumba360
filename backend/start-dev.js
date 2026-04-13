@@ -1,11 +1,16 @@
+require('dotenv').config();
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
-require('dotenv').config();
+const { connectDB } = require('./src/config/database-simple');
 
-// Create Express app
 const app = express();
+const PORT = process.env.PORT || 5001;
+
+// Connect to database
+connectDB();
 
 // Middleware
 app.use(helmet());
@@ -46,56 +51,23 @@ app.get('/api', (req, res) => {
   });
 });
 
-// Mock authentication routes for testing
-app.post('/api/auth/login', (req, res) => {
-  const { email, password } = req.body;
-  
-  // Mock authentication - accept any credentials for now
-  if (email && password) {
-    res.json({
-      success: true,
-      message: 'Login successful',
-      user: {
-        id: '1',
-        email: email,
-        firstName: email.split('@')[0],
-        lastName: 'User',
-        userType: email === 'wallaceralak@gmail.com' ? 'admin' : 'user'
-      },
-      token: 'mock-jwt-token-' + Date.now()
-    });
-  } else {
-    res.status(400).json({
-      success: false,
-      message: 'Email and password are required'
-    });
-  }
-});
+// Import Simple AuthController and User model
+const AuthControllerSimple = require('./src/controllers/authControllerSimple');
+const UserSimple = require('./src/models/UserSimple');
 
-app.post('/api/auth/register', (req, res) => {
-  const { email, password, firstName, lastName } = req.body;
-  
-  // Mock registration - accept any credentials for now
-  if (email && password && firstName && lastName) {
-    res.json({
-      success: true,
-      message: 'Registration successful',
-      user: {
-        id: '1',
-        email: email,
-        firstName: firstName,
-        lastName: lastName,
-        userType: 'user'
-      },
-      token: 'mock-jwt-token-' + Date.now()
-    });
-  } else {
-    res.status(400).json({
-      success: false,
-      message: 'All fields are required'
-    });
+// Setup database tables
+async function setupDatabase() {
+  try {
+    await UserSimple.createUsersTable();
+    console.log('Database setup completed');
+  } catch (error) {
+    console.error('Database setup error:', error);
   }
-});
+}
+
+// Authentication routes
+app.post('/api/auth/login', AuthControllerSimple.login);
+app.post('/api/auth/register', AuthControllerSimple.register);
 
 // Error handling
 app.use((err, req, res, next) => {
@@ -163,29 +135,27 @@ app.use('*', (req, res) => {
 // Create default admin user
 async function createDefaultAdmin() {
   try {
-    const User = require('./src/models/User');
+    const UserSimple = require('./src/models/UserSimple');
     
     // Check if admin already exists
-    const existingAdmin = await User.findByEmail('wallaceralak@gmail.com');
+    const existingAdmin = await UserSimple.findByEmail(process.env.ADMIN_EMAIL);
     if (existingAdmin) {
       console.log('✅ Admin user already exists');
       return;
     }
     
     // Create default admin
-    const adminUser = new User({
-      email: 'wallaceralak@gmail.com',
-      password: '2587',
-      first_name: 'Wallace',
-      last_name: 'Rak',
+    const adminUser = await UserSimple.create({
+      email: process.env.ADMIN_EMAIL,
+      password: process.env.ADMIN_PASSWORD,
+      first_name: process.env.ADMIN_FIRST_NAME || 'Admin',
+      last_name: process.env.ADMIN_LAST_NAME || 'User',
       user_type: 'admin',
-      phone: '+254700000000'
+      phone: process.env.ADMIN_PHONE || '+254700000000'
     });
-    
-    await adminUser.save();
     console.log('✅ Default admin user created successfully!');
-    console.log('📧 Email: wallaceralak@gmail.com');
-    console.log('🔑 Password: 2587');
+    console.log('📧 Email:', process.env.ADMIN_EMAIL);
+    console.log('🔑 Password: [SET IN ENV]');
   } catch (error) {
     console.log('⚠️  Error creating admin user:', error.message);
     console.log('⚠️  Server will continue without admin user creation');
@@ -193,24 +163,26 @@ async function createDefaultAdmin() {
 }
 
 // Start server
-const PORT = process.env.PORT || 5001;
 const HOST = process.env.HOST || 'localhost';
 
-app.listen(PORT, async () => {
+app.listen(PORT, HOST, async () => {
   console.log(`\n=== Nyumba360 Backend Server ===`);
-  console.log(`Server running on: http://${HOST}:${PORT}`);
+  console.log(`Server running on: http://localhost:${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
-  console.log(`Database: ${process.env.MONGODB_URI ? 'MongoDB' : 'Not configured'}`);
-  console.log(`API Health: http://${HOST}:${PORT}/api/health`);
-  console.log(`\nServer started successfully!`);
+  console.log(`Database: PostgreSQL (Neon)`);
+  console.log(`API Health: http://localhost:${PORT}/api/health`);
   
-  // Create default admin user
+  console.log(`\n Available endpoints:`);
+  console.log(`  - GET /api/health - Health check`);
+  console.log(`  - GET /api - API information`);
+  console.log(`  - POST /api/auth/login - Login`);
+  console.log(`  - POST /api/auth/register - Register`);
+  
+  console.log(`\n Server is ready to handle requests!`);
+  
+  // Setup database and create default admin user
+  await setupDatabase();
   await createDefaultAdmin();
-  
-  console.log('\n📝 Available endpoints:');
-  console.log('  - GET /api/health - Health check');
-  console.log('  - GET /api - API information');
-  console.log('\n⚡ Server is ready to handle requests!');
 });
 
 // Graceful shutdown

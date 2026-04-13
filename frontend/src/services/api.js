@@ -19,17 +19,50 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    
+    // Debug: Log request details
+    if (config.url?.includes('/auth/login')) {
+      console.log('API Request:', {
+        method: config.method,
+        url: config.url,
+        baseURL: config.baseURL,
+        data: config.data,
+        headers: config.headers
+      });
+    }
+    
     return config;
   },
   (error) => {
+    console.error('Request interceptor error:', error);
     return Promise.reject(error);
   }
 );
 
 // Response interceptor to handle errors
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    // Debug: Log response details for auth endpoints
+    if (response.config?.url?.includes('/auth/login')) {
+      console.log('API Response:', {
+        status: response.status,
+        data: response.data,
+        headers: response.headers
+      });
+    }
+    return response;
+  },
   (error) => {
+    // Debug: Log error details
+    if (error.config?.url?.includes('/auth/login')) {
+      console.error('API Error:', {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data,
+        config: error.config
+      });
+    }
+    
     if (error.response?.status === 401) {
       localStorage.removeItem('token');
       window.location.href = '/login';
