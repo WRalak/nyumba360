@@ -6,7 +6,7 @@ import { NotificationProvider } from './contexts/NotificationContext.jsx';
 import Navbar from './components/Navbar';
 import Footer from './components/Footer';
 import NotificationContainer from './components/NotificationContainer';
-import Home from './pages/Home';
+import Home from './pages/HomePage';
 import Login from './pages/auth/Login.jsx';
 import Register from './pages/auth/Register.jsx';
 import Dashboard from './pages/Dashboard.jsx';
@@ -20,6 +20,7 @@ import Settings from './pages/Settings.jsx';
 import About from './pages/About.jsx';
 import Features from './pages/Features.jsx';
 import Contact from './pages/Contact.jsx';
+import DemoPage from './pages/DemoPage.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 import './App.css';
 
@@ -28,7 +29,7 @@ function App() {
     <NotificationProvider>
       <AuthProvider>
         <PropertyProvider>
-          <Router>
+          <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
               <div className="min-h-screen flex flex-col">
                 <Navbar />
                 <main className="flex-grow">
@@ -39,6 +40,7 @@ function App() {
                     <Route path="/about" element={<About />} />
                     <Route path="/features" element={<Features />} />
                     <Route path="/contact" element={<Contact />} />
+                    <Route path="/demo" element={<DemoPage />} />
                     <Route path="/dashboard" element={
                       <ProtectedRoute>
                         <Dashboard />

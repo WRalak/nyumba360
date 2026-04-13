@@ -4,7 +4,7 @@ const NotificationUtils = require('../utils/notificationUtils');
 const Notification = require('../models/Notification');
 const Property = require('../models/Property');
 const Tenant = require('../models/Tenant');
-const Payment = require('../models/Payment');
+const RentPayment = require('../models/RentPayment');
 const moment = require('moment');
 
 class NotificationScheduler {
