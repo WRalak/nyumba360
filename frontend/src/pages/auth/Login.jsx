@@ -35,10 +35,16 @@ const Login = () => {
     
     if (!validateForm()) return;
 
-    const result = await login(formData.email, formData.password);
-    
-    if (result.success) {
-      navigate('/dashboard');
+    try {
+      const result = await login(formData.email, formData.password);
+      
+      if (result.success) {
+        navigate('/dashboard');
+      } else {
+        setErrors({ form: result.message || 'Login failed' });
+      }
+    } catch (error) {
+      setErrors({ form: error.response?.data?.message || 'Login failed' });
     }
   };
 
@@ -79,6 +85,11 @@ const Login = () => {
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
         <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
           <form className="space-y-6" onSubmit={handleSubmit}>
+            {errors.form && (
+              <div className="bg-red-50 border border-red-200 rounded-md p-4">
+                <div className="text-sm text-red-600">{errors.form}</div>
+              </div>
+            )}
             <div>
               <label htmlFor="email" className="block text-sm font-medium text-gray-700">
                 Email address

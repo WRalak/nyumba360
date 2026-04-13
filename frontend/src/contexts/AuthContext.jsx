@@ -76,15 +76,16 @@ export const AuthProvider = ({ children }) => {
     dispatch({ type: 'LOGIN_START' });
     try {
       const response = await authAPI.login(credentials);
+      const data = response.data;
       dispatch({ 
         type: 'LOGIN_SUCCESS', 
-        payload: { user: response.data.user, token: response.data.token }
+        payload: { user: data.user, token: data.token }
       });
-      return response.data;
+      return data;
     } catch (error) {
       dispatch({ 
         type: 'LOGIN_FAILURE', 
-        payload: error.response?.data?.error || 'Login failed'
+        payload: error.response?.data?.message || 'Login failed'
       });
       throw error;
     }
@@ -94,15 +95,16 @@ export const AuthProvider = ({ children }) => {
     dispatch({ type: 'REGISTER_START' });
     try {
       const response = await authAPI.register(userData);
+      const data = response.data;
       dispatch({ 
         type: 'REGISTER_SUCCESS', 
-        payload: { user: response.data.user, token: response.data.token }
+        payload: { user: data.user, token: data.token }
       });
-      return response.data;
+      return data;
     } catch (error) {
       dispatch({ 
         type: 'REGISTER_FAILURE', 
-        payload: error.response?.data?.error || 'Registration failed'
+        payload: error.response?.data?.message || 'Registration failed'
       });
       throw error;
     }
