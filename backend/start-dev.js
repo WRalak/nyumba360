@@ -106,6 +106,55 @@ app.use((err, req, res, next) => {
   });
 });
 
+// Mock data endpoints
+app.get('/api/properties', (req, res) => {
+  res.json({
+    success: true,
+    data: [
+      {
+        id: '1',
+        name: 'Sunset Apartments',
+        address: '123 Main St',
+        type: 'apartment',
+        units: 12,
+        occupied: 10,
+        monthlyRevenue: 120000
+      }
+    ]
+  });
+});
+
+app.get('/api/tenants', (req, res) => {
+  res.json({
+    success: true,
+    data: [
+      {
+        id: '1',
+        name: 'John Doe',
+        email: 'john@example.com',
+        property: 'Sunset Apartments',
+        unit: 'A101',
+        status: 'active'
+      }
+    ]
+  });
+});
+
+app.get('/api/payments', (req, res) => {
+  res.json({
+    success: true,
+    data: [
+      {
+        id: '1',
+        tenant: 'John Doe',
+        amount: 10000,
+        date: '2024-01-01',
+        status: 'paid'
+      }
+    ]
+  });
+});
+
 // 404 handler
 app.use('*', (req, res) => {
   res.status(404).json({ error: 'Route not found' });
