@@ -1,0 +1,45 @@
+version: '3.8'
+
+services:
+  # Frontend service
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    environment:
+      - VITE_API_URL=http://localhost:5001/api
+    networks:
+      - nyumba360-network
+    restart: unless-stopped
+
+  # Backend service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "5001:5001"
+    environment:
+      - NODE_ENV=production
+      - PORT=5001
+      - CORS_ORIGIN=http://localhost:3000
+      - MONGODB_URI=mongodb+srv://wallaceralak_db_user:7tzzqMrl5WdzPDHl@cluster0.yszl0di.mongodb.net/nyumba360
+      - JWT_SECRET=your_jwt_secret_key_here
+      - JWT_EXPIRES_IN=7d
+    networks:
+      - nyumba360-network
+    restart: unless-stopped
+    volumes:
+      - ./backend/uploads:/app/uploads
+
+networks:
+  nyumba360-network:
+    driver: bridge
+
+volumes:
+  uploads:
+    driver: local
