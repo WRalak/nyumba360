@@ -1,4 +1,4 @@
-name: Deploy to Docker Hub
+name: Build Docker Images
 
 on:
   push:
@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-and-push:
+  build:
     runs-on: ubuntu-latest
     
     steps:
@@ -15,33 +15,34 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
       
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-      
-      - name: Build and Push Backend Image
+      - name: Build Backend Docker Image
         uses: docker/build-push-action@v5
         with:
           context: ./backend
-          push: true
-          tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/nyumba360-backend:${{ github.sha }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/nyumba360-backend:latest
+          push: false
+          load: true
+          tags: nyumba360-backend:test
       
-      - name: Build and Push Frontend Image
+      - name: Build Frontend Docker Image
         uses: docker/build-push-action@v5
         with:
           context: ./frontend
-          push: true
-          tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/nyumba360-frontend:${{ github.sha }}
-            ${{ secrets.DOCKERHUB_USERNAME }}/nyumba360-frontend:latest
+          push: false
+          load: true
+          tags: nyumba360-frontend:test
+      
+      - name: Test Docker Images
+        run: |
+          docker run --rm -d -p 5001:5001 --name test-backend nyumba360-backend:test
+          docker run --rm -d -p 3000:80 --name test-frontend nyumba360-frontend:test
+          sleep 10
+          curl -f http://localhost:5001/api/health || exit 1
+          curl -f http://localhost:3000 || exit 1
+          docker stop test-backend test-frontend
       
       - name: Summary
         run: |
-          echo "Docker images pushed successfully!"
-          echo "Backend: ${{ secrets.DOCKERHUB_USERNAME }}/nyumba360-backend:${{ github.sha }}"
-          echo "Frontend: ${{ secrets.DOCKERHUB_USERNAME }}/nyumba360-frontend:${{ github.sha }}"
-          echo "Latest tags: ${{ secrets.DOCKERHUB_USERNAME }}/nyumba360-backend:latest, ${{ secrets.DOCKERHUB_USERNAME }}/nyumba360-frontend:latest"
+          echo "Docker images built and tested successfully!"
+          echo "Backend: nyumba360-backend:test"
+          echo "Frontend: nyumba360-frontend:test"
+          echo "To enable pushing to Docker Hub, set DOCKERHUB_USERNAME and DOCKERHUB_TOKEN secrets"
