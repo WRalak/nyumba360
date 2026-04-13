@@ -35,15 +35,23 @@ const Login = () => {
     
     if (!validateForm()) return;
 
+    console.log('Login attempt:', { email: formData.email });
+    setErrors({});
+
     try {
       const result = await login(formData.email, formData.password);
       
+      console.log('Login result:', result);
+      
       if (result.success) {
+        console.log('Login successful, navigating to dashboard');
         navigate('/dashboard');
       } else {
+        console.log('Login failed:', result.message);
         setErrors({ form: result.message || 'Login failed' });
       }
     } catch (error) {
+      console.error('Login error:', error);
       setErrors({ form: error.response?.data?.message || 'Login failed' });
     }
   };

@@ -21,6 +21,7 @@ import About from './pages/About.jsx';
 import Features from './pages/Features.jsx';
 import Contact from './pages/Contact.jsx';
 import DemoPage from './pages/DemoPage.jsx';
+import ApiTest from './components/ApiTest.jsx';
 import ProtectedRoute from './components/ProtectedRoute.jsx';
 import './App.css';
 
@@ -41,6 +42,7 @@ function App() {
                     <Route path="/features" element={<Features />} />
                     <Route path="/contact" element={<Contact />} />
                     <Route path="/demo" element={<DemoPage />} />
+                    <Route path="/debug" element={<ApiTest />} />
                     <Route path="/dashboard" element={
                       <ProtectedRoute>
                         <Dashboard />

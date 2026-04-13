@@ -35,7 +35,18 @@ const ApiTest = () => {
       addResult('Auth API', false, `Auth API failed: ${error.message}`);
     }
 
-    // Test 3: Properties API
+    // Test 3: Login API
+    try {
+      const response = await authAPI.login({
+        email: 'test@example.com',
+        password: 'test123'
+      });
+      addResult('Login API', true, 'Login successful', response);
+    } catch (error) {
+      addResult('Login API', false, `Login failed: ${error.message}`, error.response?.data);
+    }
+
+    // Test 4: Properties API
     try {
       const response = await propertyAPI.getStats('test-user');
       addResult('Properties API', true, 'Properties API working', response);
