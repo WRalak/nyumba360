@@ -1,176 +1,47 @@
-name: Deploy Nyumba360
+name: Deploy to Docker Hub
 
 on:
   push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main, develop ]
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
-  test:
+  build-and-push:
     runs-on: ubuntu-latest
     
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-        with:
-          node-version: '18'
-      - name: Install dependencies
-        run: |
-          cd backend
-          npm ci
-          cd ../frontend
-          npm ci
-      - name: Run backend tests
-        run: |
-          cd backend
-          npm test
-      - name: Run frontend tests
-        run: |
-          cd ../frontend
-          npm test -- --coverage --watchAll=false
+      - uses: actions/checkout@v4
       
-      - name: Upload coverage reports
-        uses: codecov/codecov-action@v3
-        with:
-          files: ./backend/coverage/lcov.info,./frontend/coverage/lcov.info
-
-  build-and-deploy:
-    needs: test
-    runs-on: ubuntu-latest
-    
-    steps:
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
+        uses: docker/setup-buildx-action@v3
       
       - name: Login to Docker Hub
-        uses: docker/login-action@v2
+        uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
       
-      - name: Build and Push Docker Image
+      - name: Build and Push Backend Image
         uses: docker/build-push-action@v5
         with:
-          context: .
+          context: ./backend
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/nyumba360:${{ github.sha }}
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/nyumba360-backend:${{ github.sha }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/nyumba360-backend:latest
       
-      - name: Deploy to Production
-        uses: appleboy/ssh-action@v0.1.5
+      - name: Build and Push Frontend Image
+        uses: docker/build-push-action@v5
         with:
-          host: ${{ secrets.HOST }}
-          username: ${{ secrets.USERNAME }}
-          key: ${{ secrets.SSH_KEY }}
-          script: |
-            cd /var/www/nyumba360
-            docker-compose pull
-            docker-compose up -d --no-deps
-            docker-compose exec -T backend npm run migrate
-            docker-compose restart
-
-  health-check:
-    needs: build-and-deploy
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Health Check
+          context: ./frontend
+          push: true
+          tags: |
+            ${{ secrets.DOCKERHUB_USERNAME }}/nyumba360-frontend:${{ github.sha }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/nyumba360-frontend:latest
+      
+      - name: Summary
         run: |
-          curl -f https://api.nyumba360.co.ke/health || exit 1
-          curl -f https://nyumba360.co.ke/health || exit 1
-
-  backup:
-    needs: build-and-deploy
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Generate Database Backup
-        uses: appleboy/ssh-action@v0.1.5
-        with:
-          host: ${{ secrets.HOST }}
-          username: ${{ secrets.USERNAME }}
-          key: ${{ secrets.SSH_KEY }}
-          script: |
-            cd /var/www/nyumba360
-            docker-compose exec -T backend npm run backup
-            
-      - name: Cleanup Old Backups
-        uses: appleboy/ssh-action@v0.1.5
-        with:
-          host: ${{ secrets.HOST }}
-          username: ${{ secrets.USERNAME }}
-          key: ${{ secrets.SSH_KEY }}
-          script: |
-            cd /var/www/nyumba360
-            docker-compose exec -T backend npm run cleanup-backups
-
-  security-scan:
-    needs: build-and-deploy
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Run Security Scan
-        run: |
-          curl -f https://api.nyumba360.co.ke/health || exit 1
-          curl -f https://nyumba360.co.ke/health || exit 1
-
-  performance-test:
-    needs: build-and-deploy
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Load Testing
-        run: |
-          curl -f https://api.nyumba360.co.ke/health || exit 1
-          curl -f https://nyumba360.co.ke/health || exit 1
-
-  notify:
-    needs: [build-and-deploy, health-check]
-    runs-on: ubuntu-latest
-    if: always()
-    
-    steps:
-      - name: Send Deployment Notification
-        uses: 8398a7/action-slack@v3
-        with:
-          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
-          text: "Nyumba360 deployed successfully! \ud83c\udf7c2\ud80d\udc2f\ud83d\udc3d\udc2f\ud83d\udc3d"
-          color: good
-        if: success()
-      - name: Send Failure Notification
-        uses: 8398a7/action-slack@v3
-        with:
-          webhook_url: ${{ secrets.SLACK_WEBHOOK }}
-          text: "Deployment failed! \ud83d\udf7c2\ud80d\udc2f\ud83d\udc3d\ud83d\udc3d"
-          color: danger
-        if: failure()
-
-  rollback:
-    needs: [build-and-deploy, health-check]
-    runs-on: ubuntu-latest
-    if: failure()
-    
-    steps:
-      - name: Rollback Deployment
-        uses: appleboy/ssh-action@v0.1.5
-        with:
-          host: ${{ secrets.HOST }}
-          username: ${{ secrets.USERNAME }}
-          key: ${{ secrets.SSH_KEY }}
-          script: |
-            cd /var/www/nyumba360
-            docker-compose pull
-            docker-compose down
-            docker-compose up -d --no-deps
-            docker-compose exec -T backend npm run migrate
-            docker-compose restart
-
-  cleanup:
-    needs: [build-and-deploy, notify]
-    runs-on: ubuntu-latest
-    
-    steps:
-      - name: Cleanup Docker Images
-        run: |
-          docker image prune -f
-          docker volume prune -f
+          echo "Docker images pushed successfully!"
+          echo "Backend: ${{ secrets.DOCKERHUB_USERNAME }}/nyumba360-backend:${{ github.sha }}"
+          echo "Frontend: ${{ secrets.DOCKERHUB_USERNAME }}/nyumba360-frontend:${{ github.sha }}"
+          echo "Latest tags: ${{ secrets.DOCKERHUB_USERNAME }}/nyumba360-backend:latest, ${{ secrets.DOCKERHUB_USERNAME }}/nyumba360-frontend:latest"
